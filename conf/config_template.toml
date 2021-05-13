@@ -1,0 +1,26 @@
+[trade]
+    symbol = "BTC/USDT"
+
+[db]
+    addr = "127.0.0.1:3306"
+    dbName = "trading"
+    user = "root"
+    password = "root"
+    active = 10
+    idle = 5
+    idleTimeout = "4h"
+    queryTimeout = "5s"
+    execTimeout = "5s"
+    tranTimeout = "5s"
+
+[Ex.huobi]
+    Proto = "ws"
+    Host = "wss://ws.huo.pro"
+    APIHost = "api.huobi.pro"
+    Port  = "8081"
+    Path  = "/path"
+    ClientId = "1068"
+    AppKey = "4194dfac0128ae90d8c3e66818aa1fb3"
+    Secret = "3a7f12e6a2b1c4154f163339962ebcb9"
+
+
