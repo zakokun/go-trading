@@ -1,33 +1,33 @@
 package exchange
 
 import (
-	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/huobirdcenter/huobi_golang/logging/applogger"
-	"go-trading/utils/DB"
-	"time"
-
-	"go-trading/conf"
-	"go-trading/utils/log"
-
-	"github.com/huobirdcenter/huobi_golang/pkg/client"
-	"github.com/huobirdcenter/huobi_golang/pkg/model/order"
-
 	"github.com/huobirdcenter/huobi_golang/pkg/client/marketwebsocketclient"
+	"github.com/huobirdcenter/huobi_golang/pkg/model/base"
 	"github.com/huobirdcenter/huobi_golang/pkg/model/market"
+	"github.com/shopspring/decimal"
+	"go-trading/conf"
+	"go-trading/utils/DB"
+	"go-trading/utils/log"
+	"strings"
 )
 
 type Huobi struct {
 	Name   string
-	AppKey string
-	Secret string
-	Wallet float64 // 余额
-	Stock  float64 // 持仓
 	client *marketwebsocketclient.CandlestickWebSocketClient
+}
+
+type SubscribeCandlestickResponse struct {
+	Base base.WebSocketResponseBase
+	Tick *market.Tick
+	Data []market.Tick
 }
 
 // 连接 监听数据，把各种数据写到对应的chan里面
 func (h *Huobi) Start() (err error) {
 	cf := conf.Get().Ex.Huobi
+	spew.Dump(cf)
 	h.client = new(marketwebsocketclient.CandlestickWebSocketClient).Init(cf.Host)
 	h.client.SetHandler(
 		h.subscribe,
@@ -38,59 +38,16 @@ func (h *Huobi) Start() (err error) {
 }
 
 func (h *Huobi) startListener() {
-	for {
-		cf := conf.Get().Ex.Huobi
-		ct := new(client.MarketClient).Init(cf.APIHost)
-		optionalRequest := market.GetCandlestickOptionalRequest{Period: market.DAY1, Size: 10}
-		resp, err := ct.GetCandlestick("btcusdt", optionalRequest)
-		if err != nil {
-			log.Warn("ct.GetCandlestick(%s) err(%v)", "btcusdt", err)
-		}
-		log.Warn("v.Open.Float64(%v) err(%v)", resp, err)
-		for _, v := range resp {
-			op, ok := v.Open.Float64()
-			if !ok {
-				log.Warn("v.Open.Float64(%v) err(%v)", v.Open, op)
-				continue
-			}
-			cl, ok := v.Close.Float64()
-			if !ok {
-				log.Warn("v.Close.Float64(%v) err(%v)", v.Open, err)
-				continue
-			}
-			lo, ok := v.Low.Float64()
-			if !ok {
-				log.Warn("v.Low.Float64(%v) err(%v)", v.Open, err)
-				continue
-			}
-			hi, ok := v.High.Float64()
-			if !ok {
-				log.Warn("v.High.Float64(%v) err(%v)", v.Open, err)
-				continue
-			}
-			td := &CandleData{
-				From:   "huobi",
-				Symbol: conf.Get().Trade.Symbol,
-				Open:   op,
-				Close:  cl,
-				Low:    lo,
-				High:   hi,
-				TS:     time.Now().Unix(),
-			}
-			Candle1DayChan <- td
-		}
-		time.Sleep(time.Second)
-	}
+	h.client.Connect(true)
 }
 
 func (h *Huobi) subscribe() {
-	cf := conf.Get().Ex.Huobi
-
 	var ls []*DB.Stocks
 	if err := DB.GetDB().Table("stocks").Find(&ls).Error; err != nil {
 		log.Error("db.find() err(%v)", err)
 		panic(err)
 	}
+	applogger.Info("get db %s", spew.Sdump(ls))
 	for _, v := range ls {
 		h.client.Subscribe(v.Symbol+"usdt", market.DAY1, "2118")
 	}
@@ -102,7 +59,8 @@ func (h *Huobi) handler(response interface{}) {
 		if &resp != nil {
 			if resp.Tick != nil {
 				t := resp.Tick
-				applogger.Info("Candlestick update, id: %d, count: %d, vol: %v [%v-%v-%v-%v]",
+				h.saveCandleData(resp.Ch, t.Open, t.Close, t.Low, t.High, t.Vol, t.Id)
+				applogger.Info("Candlestick update, channel %v id: %d, count: %d, vol: %v [%v-%v-%v-%v]", resp.Base,
 					t.Id, t.Count, t.Vol, t.Open, t.Close, t.Low, t.High)
 			}
 
@@ -115,32 +73,65 @@ func (h *Huobi) handler(response interface{}) {
 			}
 		}
 	} else {
-		applogger.Warn("Unknown response: %v", resp)
+		applogger.Warn("Unknown response: %v", response)
 	}
+}
+
+// saveCandleData save to stocks and stockDaily
+func (h *Huobi) saveCandleData(key string, o, c, l, hi, vol decimal.Decimal, ts int64) (err error) {
+	st := new(DB.Stocks)
+	symbols := strings.Split(key, ".")
+	sb := strings.Replace(symbols[1], "usdt", "", 1)
+	if err = DB.GetDB().Table("stocks").Where("symbol=?", sb).First(&st).Error; err != nil {
+		log.Error("saveCandleData err(%v)", err)
+		return
+	}
+	st.Open, _ = o.Float64()
+	st.Close, _ = c.Float64()
+	st.Low, _ = l.Float64()
+	st.High, _ = hi.Float64()
+	st.TS = ts
+	st.Volume, _ = vol.Float64()
+	if err = DB.GetDB().Table("stocks").Save(st).Error; err != nil {
+		log.Error("saveCandleData save stocks(%v) err(%v)", st, err)
+		return
+	}
+	sd := new(DB.Stocks)
+	sd.Open, _ = o.Float64()
+	sd.Close, _ = c.Float64()
+	sd.Low, _ = l.Float64()
+	sd.High, _ = hi.Float64()
+	sd.TS = ts
+	sd.Volume, _ = vol.Float64()
+	sd.Symbol = st.Symbol
+	if err = DB.GetDB().Table("stock_daily").Create(sd).Error; err != nil {
+		log.Error("saveCandleData save stock_daily(%v) err(%v)", sd, err)
+		return
+	}
+	return
 }
 
 func (h *Huobi) Close() (err error) {
 	h.client.Close()
-	close(tickChan)
 	close(Candle1DayChan)
 	return
 }
 
 func (h *Huobi) Trade(td *TradeMsg) (err error) {
-	cf := conf.Get().Ex.Huobi
-	ct := new(client.OrderClient).Init(cf.AppKey, cf.Secret, cf.APIHost)
-	od := &order.PlaceOrderRequest{
-		AccountId: cf.ClientId,
-		Symbol:    td.Symbol,
-		Type:      td.Tp,
-		Amount:    fmt.Sprintf("%.2f", td.Num),
-		Price:     fmt.Sprintf("%.2f", td.Price),
-	}
-	_, err = ct.PlaceOrder(od)
-	if err != nil {
-		log.Info("PlaceOrder error!:%v", err)
-		return
-	}
+	//cf := conf.Get().Ex.Huobi
+	//ct := new(client.OrderClient).Init(cf.AppKey, cf.Secret, cf.APIHost)
+	//od := &order.PlaceOrderRequest{
+	//	AccountId: cf.ClientId,
+	//	Symbol:    td.Symbol,
+	//	Type:      td.Tp,
+	//	Amount:    fmt.Sprintf("%.2f", td.Num),
+	//	Price:     fmt.Sprintf("%.2f", td.Price),
+	//}
+	//_, err = ct.PlaceOrder(od)
+	//if err != nil {
+	//	log.Info("PlaceOrder error!:%v", err)
+	//	return
+	//}
 	return
 }
 

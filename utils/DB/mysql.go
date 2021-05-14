@@ -1,9 +1,10 @@
 package DB
 
 import (
-	"go-trading/conf"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/jinzhu/gorm"
+	"go-trading/conf"
 )
 
 var (

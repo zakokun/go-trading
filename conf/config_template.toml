@@ -2,7 +2,8 @@
     symbol = "BTC/USDT"
 
 [db]
-    addr = "127.0.0.1:3306"
+    addr = "127.0.0.1"
+    port = 3306
     dbName = "trading"
     user = "root"
     password = "root"
@@ -14,8 +15,8 @@
     tranTimeout = "5s"
 
 [Ex.huobi]
-    Proto = "ws"
-    Host = "wss://ws.huo.pro"
+    Proto = "wss"
+    Host = "api.huobi.pro"
     APIHost = "api.huobi.pro"
     Port  = "8081"
     Path  = "/path"
