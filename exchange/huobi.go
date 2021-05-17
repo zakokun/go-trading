@@ -1,11 +1,14 @@
 package exchange
 
 import (
+	"fmt"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/huobirdcenter/huobi_golang/logging/applogger"
+	"github.com/huobirdcenter/huobi_golang/pkg/client"
 	"github.com/huobirdcenter/huobi_golang/pkg/client/marketwebsocketclient"
 	"github.com/huobirdcenter/huobi_golang/pkg/model/base"
 	"github.com/huobirdcenter/huobi_golang/pkg/model/market"
+	"github.com/huobirdcenter/huobi_golang/pkg/model/order"
 	"github.com/shopspring/decimal"
 	"go-trading/conf"
 	"go-trading/utils/DB"
@@ -24,7 +27,7 @@ type SubscribeCandlestickResponse struct {
 	Data []market.Tick
 }
 
-// 连接 监听数据，把各种数据写到对应的chan里面
+// 连接 监听数据
 func (h *Huobi) Start() (err error) {
 	cf := conf.Get().Ex.Huobi
 	spew.Dump(cf)
@@ -104,7 +107,10 @@ func (h *Huobi) saveCandleData(key string, o, c, l, hi, vol decimal.Decimal, ts 
 	sd.TS = ts
 	sd.Volume, _ = vol.Float64()
 	sd.Symbol = st.Symbol
-	if err = DB.GetDB().Table("stock_daily").Create(sd).Error; err != nil {
+	if err = DB.GetDB().Table("stock_daily").Set(
+		"gorm:insert_option",
+		"ON DUPLICATE KEY UPDATE open = VALUES(open),close=VALUES(close),low=VALUES(low),high=VALUES(high),volume=VALUES(volume)",
+	).Create(sd).Error; err != nil {
 		log.Error("saveCandleData save stock_daily(%v) err(%v)", sd, err)
 		return
 	}
@@ -118,20 +124,25 @@ func (h *Huobi) Close() (err error) {
 }
 
 func (h *Huobi) Trade(td *TradeMsg) (err error) {
-	//cf := conf.Get().Ex.Huobi
-	//ct := new(client.OrderClient).Init(cf.AppKey, cf.Secret, cf.APIHost)
-	//od := &order.PlaceOrderRequest{
-	//	AccountId: cf.ClientId,
-	//	Symbol:    td.Symbol,
-	//	Type:      td.Tp,
-	//	Amount:    fmt.Sprintf("%.2f", td.Num),
-	//	Price:     fmt.Sprintf("%.2f", td.Price),
-	//}
-	//_, err = ct.PlaceOrder(od)
-	//if err != nil {
-	//	log.Info("PlaceOrder error!:%v", err)
-	//	return
-	//}
+	cf := conf.Get().Ex.Huobi
+	u := new(DB.User)
+	if err = DB.GetDB().Table("users").Where("user_id=?", td.UserId).First(u).Error; err != nil {
+		log.Error("huobi Trade(%v) get user() err(%v)", td, err)
+		return
+	}
+	ct := new(client.OrderClient).Init(u.AppKey, u.Secret, cf.APIHost)
+	od := &order.PlaceOrderRequest{
+		AccountId: "1608",
+		Symbol:    td.Symbol,
+		Type:      td.Tp,
+		Amount:    fmt.Sprintf("%.2f", td.Num),
+		Price:     fmt.Sprintf("%.2f", td.Price),
+	}
+	_, err = ct.PlaceOrder(od)
+	if err != nil {
+		log.Info("PlaceOrder error!:%v", err)
+		return
+	}
 	return
 }
 

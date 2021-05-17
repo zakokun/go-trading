@@ -21,3 +21,10 @@ type StockDaily struct {
 	High   float64
 	Volume int64
 }
+
+type User struct {
+	Id       int64
+	Username string
+	AppKey   string
+	Secret   string
+}

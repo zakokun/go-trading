@@ -22,6 +22,7 @@ type Ex interface {
 }
 
 type TradeMsg struct {
+	UserId int64
 	// 交易动作,包括buy-market, sell-market, buy-limit, sell-limit
 	Tp string
 	// 交易价格

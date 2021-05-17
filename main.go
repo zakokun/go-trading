@@ -10,7 +10,6 @@ import (
 
 func main() {
 	exchange.New()
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT)
 	for {
