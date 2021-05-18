@@ -36,13 +36,21 @@ func (h *Huobi) Start() (err error) {
 		h.subscribe,
 		h.handler,
 	)
-	go h.startListener()
+	go h.candleListener()
+	go h.tradeListener()
+
 	return
 }
 
-func (h *Huobi) startListener() {
+func (h *Huobi) candleListener() {
 	h.client.Connect(true)
 }
+
+func (h *Huobi) tradeListener() {
+
+	ls := DB.GetDB().Where("order").Where("state=?", 0).
+}
+
 
 func (h *Huobi) subscribe() {
 	var ls []*DB.Stocks

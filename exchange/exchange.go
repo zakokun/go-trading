@@ -2,11 +2,6 @@ package exchange
 
 var ex Ex
 
-var (
-	tickChan       = make(chan *TickData, 1024)
-	Candle1DayChan = make(chan *CandleData, 1024)
-)
-
 // Ex 所有交易所要实现的接口
 type Ex interface {
 	// 启动交易所连接

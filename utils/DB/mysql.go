@@ -20,6 +20,15 @@ type dayCandle struct {
 	TS     int64
 }
 
+type Order struct {
+	Id     int64
+	UserId int64
+	Symbol string
+	Price  float64
+	Num    float64
+	State  int64
+}
+
 func initDB() {
 	conn, err := gorm.Open("mysql", buildDSN())
 	if err != nil {
