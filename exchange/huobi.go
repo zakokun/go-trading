@@ -47,10 +47,15 @@ func (h *Huobi) candleListener() {
 }
 
 func (h *Huobi) tradeListener() {
+	ls := make([]*DB.Order, 0)
+	if err := DB.GetDB().Where("order").Where("state=?", 0).Find(&ls).Error; err != nil {
+		log.Error("db.find() err(%v)", err)
+	}
+	for _, v := range ls {
 
-	ls := DB.GetDB().Where("order").Where("state=?", 0).
+	}
+
 }
-
 
 func (h *Huobi) subscribe() {
 	var ls []*DB.Stocks
