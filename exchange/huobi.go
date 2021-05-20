@@ -14,6 +14,7 @@ import (
 	"go-trading/utils/DB"
 	"go-trading/utils/log"
 	"strings"
+	"time"
 )
 
 type Huobi struct {
@@ -38,7 +39,6 @@ func (h *Huobi) Start() (err error) {
 	)
 	go h.candleListener()
 	go h.tradeListener()
-
 	return
 }
 
@@ -47,14 +47,41 @@ func (h *Huobi) candleListener() {
 }
 
 func (h *Huobi) tradeListener() {
-	ls := make([]*DB.Order, 0)
-	if err := DB.GetDB().Where("order").Where("state=?", 0).Find(&ls).Error; err != nil {
-		log.Error("db.find() err(%v)", err)
+	cf := conf.Get().Ex.Huobi
+	for {
+		time.Sleep(time.Second * 2)
+		ls := make([]*DB.Order, 0)
+		if err := DB.GetDB().Where("order").Where("state=?", 0).Limit(5).Find(&ls).Error; err != nil {
+			log.Error("db.find() err(%v)", err)
+			continue
+		}
+		for _, v := range ls {
+			user := new(DB.User)
+			if err := DB.GetDB().Table("user").Where("id=?", v.UserId).First(&user).Error; err != nil {
+				log.Error("db.find() err(%v)", err)
+				continue
+			}
+			if user.AppKey == "" || user.Secret == "" {
+				log.Warn("user %v have no app key", user)
+				continue
+			}
+			ct := new(client.OrderClient).Init(user.AppKey, user.Secret, cf.APIHost)
+			od := &order.PlaceOrderRequest{
+				AccountId: "1068",
+				Symbol:    v.Symbol,
+				Type:      "buy-limit",
+				Amount:    fmt.Sprintf("%.2f", v.Num),
+				Price:     fmt.Sprintf("%.2f", v.Price),
+			}
+			orderResp, err := ct.PlaceOrder(od)
+			if err != nil {
+				log.Info("PlaceOrder error!:%v", err)
+				continue
+			}
+			v.ItemId = orderResp.Data
+			DB.GetDB().Table("order").Save(v)
+		}
 	}
-	for _, v := range ls {
-
-	}
-
 }
 
 func (h *Huobi) subscribe() {

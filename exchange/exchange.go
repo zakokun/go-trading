@@ -12,8 +12,8 @@ type Ex interface {
 	TickListener() chan *TickData
 	// 获取日K数据管道
 	Kindle1DayListener() chan *CandleData
-	// 实际交易
-	Trade(td *TradeMsg) error
+	tradeListener()
+	candleListener()
 }
 
 type TradeMsg struct {
