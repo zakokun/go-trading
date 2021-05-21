@@ -27,6 +27,7 @@ type Order struct {
 	Price  float64
 	Num    float64
 	State  int64
+	Act    int64
 	ItemId string
 }
 

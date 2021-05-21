@@ -75,6 +75,10 @@ func (h *Huobi) tradeListener() {
 				Amount:    fmt.Sprintf("%.2f", v.Num),
 				Price:     fmt.Sprintf("%.2f", v.Price),
 			}
+			// 1买 2卖
+			if v.Act == 2 {
+				od.Type = "sell-limit"
+			}
 			orderResp, err := ct.PlaceOrder(od)
 			if err != nil {
 				log.Info("PlaceOrder error!:%v", err)
