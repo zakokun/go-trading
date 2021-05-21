@@ -105,7 +105,6 @@ func (h *Huobi) initDaily() {
 		if err != nil {
 			log.Warn("ct.GetCandlestick(%s) err(%v)", "btcusdt", err)
 		}
-		spew.Dump(resp)
 		for _, vv := range resp {
 			op, ok := vv.Open.Float64()
 			if !ok {
