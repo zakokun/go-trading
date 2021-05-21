@@ -31,7 +31,9 @@ type SubscribeCandlestickResponse struct {
 // 连接 监听数据
 func (h *Huobi) Start() (err error) {
 	cf := conf.Get().Ex.Huobi
-	spew.Dump(cf)
+	if cf.Init == 1 {
+		h.initDaily()
+	}
 	h.client = new(marketwebsocketclient.CandlestickWebSocketClient).Init(cf.Host)
 	h.client.SetHandler(
 		h.subscribe,
@@ -51,7 +53,7 @@ func (h *Huobi) tradeListener() {
 	for {
 		time.Sleep(time.Second * 2)
 		ls := make([]*DB.Order, 0)
-		if err := DB.GetDB().Where("order").Where("state=?", 0).Limit(5).Find(&ls).Error; err != nil {
+		if err := DB.GetDB().Table("orders").Where("state=?", 0).Limit(5).Find(&ls).Error; err != nil {
 			log.Error("db.find() err(%v)", err)
 			continue
 		}
@@ -80,6 +82,59 @@ func (h *Huobi) tradeListener() {
 			}
 			v.ItemId = orderResp.Data
 			DB.GetDB().Table("order").Save(v)
+		}
+	}
+}
+
+func (h *Huobi) initDaily() {
+	var ls []*DB.Stocks
+	if err := DB.GetDB().Table("stocks").Find(&ls).Error; err != nil {
+		log.Error("db.find() err(%v)", err)
+		panic(err)
+	}
+	applogger.Info("get db %s", spew.Sdump(ls))
+	for _, v := range ls {
+		cf := conf.Get().Ex.Huobi
+		ct := new(client.MarketClient).Init(cf.APIHost)
+		optionalRequest := market.GetCandlestickOptionalRequest{Period: market.DAY1, Size: 100}
+		resp, err := ct.GetCandlestick(v.Symbol+"usdt", optionalRequest)
+		if err != nil {
+			log.Warn("ct.GetCandlestick(%s) err(%v)", "btcusdt", err)
+		}
+		spew.Dump(resp)
+		for _, vv := range resp {
+			op, ok := vv.Open.Float64()
+			if !ok {
+				log.Warn("v.Open.Float64(%v) err(%v)", v.Open, op)
+			}
+			cl, ok := vv.Close.Float64()
+			if !ok {
+				log.Warn("v.Close.Float64(%v) err(%v)", v.Open, err)
+			}
+			lo, ok := vv.Low.Float64()
+			if !ok {
+				log.Warn("v.Low.Float64(%v) err(%v)", v.Open, err)
+			}
+			hi, ok := vv.High.Float64()
+			if !ok {
+				log.Warn("v.High.Float64(%v) err(%v)", v.Open, err)
+			}
+			sd := new(DB.StockDaily)
+			sd.Open = op
+			sd.Close = cl
+			sd.Low = lo
+			sd.High = hi
+			sd.TS = vv.Id
+			sd.Volume, _ = vv.Vol.Float64()
+			sd.Symbol = v.Symbol
+			spew.Dump(sd)
+			if err = DB.GetDB().Table("stock_daily").Set(
+				"gorm:insert_option",
+				"ON DUPLICATE KEY UPDATE open = VALUES(open),close=VALUES(close),low=VALUES(low),high=VALUES(high),volume=VALUES(volume)",
+			).Create(sd).Error; err != nil {
+				log.Error("saveCandleData save stock_daily(%v) err(%v)", sd, err)
+				return
+			}
 		}
 	}
 }
@@ -139,7 +194,7 @@ func (h *Huobi) saveCandleData(key string, o, c, l, hi, vol decimal.Decimal, ts 
 		log.Error("saveCandleData save stocks(%v) err(%v)", st, err)
 		return
 	}
-	sd := new(DB.Stocks)
+	sd := new(DB.StockDaily)
 	sd.Open, _ = o.Float64()
 	sd.Close, _ = c.Float64()
 	sd.Low, _ = l.Float64()
@@ -159,7 +214,6 @@ func (h *Huobi) saveCandleData(key string, o, c, l, hi, vol decimal.Decimal, ts 
 
 func (h *Huobi) Close() (err error) {
 	h.client.Close()
-	close(Candle1DayChan)
 	return
 }
 
@@ -188,10 +242,10 @@ func (h *Huobi) Trade(td *TradeMsg) (err error) {
 
 // TickListener 返回实时价格的channel
 // 持续获取价格数据
-func (h *Huobi) TickListener() chan *TickData {
-	return tickChan
-}
-
-func (h *Huobi) Kindle1DayListener() chan *CandleData {
-	return Candle1DayChan
-}
+//func (h *Huobi) TickListener() chan *TickData {
+//	return
+//}
+//
+//func (h *Huobi) Kindle1DayListener() chan *CandleData {
+//	return Candle1DayChan
+//}

@@ -29,6 +29,7 @@ type Huobi struct {
 	APIHost string
 	Port    string
 	Path    string
+	Init    int64
 	//ClientId string
 	//AppKey   string
 	//Secret   string

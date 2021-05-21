@@ -19,7 +19,7 @@ type StockDaily struct {
 	Close  float64
 	Low    float64
 	High   float64
-	Volume int64
+	Volume float64
 }
 
 type User struct {

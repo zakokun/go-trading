@@ -9,9 +9,9 @@ type Ex interface {
 	// 关闭交易所连接
 	Close() error
 	// 获取实时行情价格管道
-	TickListener() chan *TickData
-	// 获取日K数据管道
-	Kindle1DayListener() chan *CandleData
+	//TickListener() chan *TickData
+	//// 获取日K数据管道
+	//Kindle1DayListener() chan *CandleData
 	tradeListener()
 	candleListener()
 }

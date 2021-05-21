@@ -23,5 +23,6 @@
     ClientId = "1068"
     AppKey = "4194dfac0128ae90d8c3e66818aa1fb3"
     Secret = "3a7f12e6a2b1c4154f163339962ebcb9"
+    Init = 1
 
 
