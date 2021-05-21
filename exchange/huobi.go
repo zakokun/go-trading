@@ -6,7 +6,6 @@ import (
 	"github.com/huobirdcenter/huobi_golang/logging/applogger"
 	"github.com/huobirdcenter/huobi_golang/pkg/client"
 	"github.com/huobirdcenter/huobi_golang/pkg/client/marketwebsocketclient"
-	"github.com/huobirdcenter/huobi_golang/pkg/model/base"
 	"github.com/huobirdcenter/huobi_golang/pkg/model/market"
 	"github.com/huobirdcenter/huobi_golang/pkg/model/order"
 	"github.com/shopspring/decimal"
@@ -20,12 +19,6 @@ import (
 type Huobi struct {
 	Name   string
 	client *marketwebsocketclient.CandlestickWebSocketClient
-}
-
-type SubscribeCandlestickResponse struct {
-	Base base.WebSocketResponseBase
-	Tick *market.Tick
-	Data []market.Tick
 }
 
 // 连接 监听数据
@@ -48,10 +41,11 @@ func (h *Huobi) candleListener() {
 	h.client.Connect(true)
 }
 
+// 监听状态 下订单
 func (h *Huobi) tradeListener() {
 	cf := conf.Get().Ex.Huobi
 	for {
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Second * 4)
 		ls := make([]*DB.Order, 0)
 		if err := DB.GetDB().Table("orders").Where("state=?", 0).Limit(5).Find(&ls).Error; err != nil {
 			log.Error("db.find() err(%v)", err)
@@ -59,11 +53,61 @@ func (h *Huobi) tradeListener() {
 		}
 		for _, v := range ls {
 			user := new(DB.User)
-			if err := DB.GetDB().Table("user").Where("id=?", v.UserId).First(&user).Error; err != nil {
+			if err := DB.GetDB().Table("users").Where("id=?", v.UserId).First(&user).Error; err != nil {
 				log.Error("db.find() err(%v)", err)
 				continue
 			}
 			if user.AppKey == "" || user.Secret == "" {
+				log.Warn("user %v have no app key", user)
+				continue
+			}
+			ct := new(client.OrderClient).Init(user.AppKey, user.Secret, cf.APIHost)
+			od := &order.PlaceOrderRequest{
+				ClientOrderId: fmt.Sprintf("%d", v.Id),
+				AccountId:     "1068",
+				Symbol:        v.Symbol + "usdt",
+				Type:          "buy-limit",
+				Amount:        fmt.Sprintf("%.2f", v.Num),
+				Price:         fmt.Sprintf("%.2f", v.Price),
+			}
+			// 1买 2卖
+			if v.Act == 2 {
+				od.Type = "sell-limit"
+			}
+			orderResp, err := ct.PlaceOrder(od)
+			if err != nil {
+				log.Error("PlaceOrder error!:%v", err)
+				continue
+			}
+			v.ItemId = orderResp.Data
+			DB.GetDB().Table("order").Save(v)
+		}
+	}
+}
+
+func (h *Huobi) changeOrder(orderId int64, state int64) {
+	DB.GetDB().Table("orders").Where("id=?", orderId).Update("state", state)
+}
+
+// 监听订单完成状态
+func (h *Huobi) putTradeListener() {
+	cf := conf.Get().Ex.Huobi
+	for {
+		time.Sleep(time.Second * 2)
+		ls := make([]*DB.Order, 0)
+		if err := DB.GetDB().Table("orders").Where("state=?", 1).Limit(5).Find(&ls).Error; err != nil {
+			log.Error("db.find() err(%v)", err)
+			continue
+		}
+		for _, v := range ls {
+			user := new(DB.User)
+			if err := DB.GetDB().Table("user").Where("id=?", v.UserId).First(&user).Error; err != nil {
+				log.Error("db.find() err(%v)", err)
+				h.changeOrder(v.Id, 3) // 失败
+				continue
+			}
+			if user.AppKey == "" || user.Secret == "" {
+				h.changeOrder(v.Id, 3) // 失败
 				log.Warn("user %v have no app key", user)
 				continue
 			}
@@ -81,6 +125,7 @@ func (h *Huobi) tradeListener() {
 			}
 			orderResp, err := ct.PlaceOrder(od)
 			if err != nil {
+				h.changeOrder(v.Id, 3) // 失败
 				log.Info("PlaceOrder error!:%v", err)
 				continue
 			}
